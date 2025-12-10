@@ -9,8 +9,6 @@ from typing import List, Dict, Any, Optional, Tuple
 UNIPROT_JSON = "https://rest.uniprot.org/uniprotkb/{acc}.json"
 XLSX_NAME = "cromoproteinas.xlsx"
 
-# ===================== Utilidades =====================
-
 def extract_accession(url: str) -> Optional[str]:
     m = re.search(r"/uniprotkb/([A-Z0-9]+)", url)
     if m:
@@ -29,20 +27,17 @@ def fetch_uniprot_json(accession: str) -> Optional[Dict[str, Any]]:
         return None
 
 NBSP_CHARS = (
-    "\u00A0"  # nbsp
-    "\u2007"  # figure space
-    "\u202F"  # narrow no-break space
+    "\u00A0"  
+    "\u2007"  
+    "\u202F"  
 )
 
 def normalize_text(s: str) -> str:
     if not s:
         return ""
-    # quita etiquetas HTML simples <...>
     s = re.sub(r"<[^>]+>", " ", s)
-    # reemplaza espacios no separables por espacio normal
     for ch in NBSP_CHARS:
         s = s.replace(ch, " ")
-    # compacta espacios
     s = re.sub(r"\s+", " ", s)
     return s.strip()
 
@@ -51,16 +46,12 @@ ABS_STRICT_RE = re.compile(
     flags=re.I
 )
 
-# (fluorescence )?emission spectrum which peaks at 538 nm
 EM_STRICT_RE = re.compile(
     r"(?:fluorescence\s+)?emission\s+spectrum\s+which\s+peaks?\s+at\s*(\d{2,4})\s*nm",
     flags=re.I
 )
 
 def find_em_strict(entry: Dict[str, Any]) -> str:
-    """
-    Busca solo el patrón: (fluorescence )?emission spectrum which peaks at XXX nm
-    """
     for c in entry.get("comments", []) or []:
         for t in c.get("texts", []) or []:
             val = normalize_text(t.get("value", "") or "")
@@ -74,22 +65,17 @@ def find_em_strict(entry: Dict[str, Any]) -> str:
     return "No encontrado"
 
 def find_abs_in_html(accession: str) -> str:
-    """
-    Busca en el HTML de la página principal de UniProt (no la API) el patrón:
-    'Absorption ... Abs(max) = ###nm'. Devuelve '### nm' o 'No encontrado'.
-    """
     import re
     import requests
 
-    # --- normalizador local ---
     NBSP_CHARS = ("\u00A0", "\u2007", "\u202F")
     def _norm(s: str) -> str:
         if not s:
             return ""
-        s = re.sub(r"<[^>]+>", " ", s)          # quita etiquetas HTML
+        s = re.sub(r"<[^>]+>", " ", s)          
         for ch in NBSP_CHARS:
-            s = s.replace(ch, " ")              # reemplaza NBSP por espacio normal
-        s = re.sub(r"\s+", " ", s).strip()      # compacta espacios
+            s = s.replace(ch, " ")              
+        s = re.sub(r"\s+", " ", s).strip()      
         return s
 
     url = f"https://www.uniprot.org/uniprotkb/{accession}/entry"
@@ -102,24 +88,23 @@ def find_abs_in_html(accession: str) -> str:
 
     text = _norm(html)
 
-    # 1) Intenta anclar al bloque de 'Absorption' y buscar el Abs(max) ahí cerca
-    #    (toleramos separadores :, -, nada; y espacios opcionales)
-    block_pat = re.compile(r"Absorption\s*[:\-]?\s*(.{0,300})", re.I)  # 300 chars siguientes
+    # intenta anclar al bloque de 'Absorption' y buscar el Abs(max) ahí cerca
+    block_pat = re.compile(r"Absorption\s*[:\-]?\s*(.{0,300})", re.I)  
     mblock = block_pat.search(text)
     if mblock:
-        window = mblock.group(0)  # o group(1) si prefieres limitar más
+        window = mblock.group(0)  
         m = re.search(r"Abs\s*\(\s*max\s*\)\s*=\s*(\d{2,4})\s*nm\b", window, re.I)
         if m:
             return f"{m.group(1)} nm"
 
-    # 2) Fallback: busca el patrón en toda la página (por si el layout varía)
+    # busca el patrón en toda la página (por si el layout varía)
     m = re.search(r"Abs\s*\(\s*max\s*\)\s*=\s*(\d{2,4})\s*nm\b", text, re.I)
     if m:
         return f"{m.group(1)} nm"
 
     return "No encontrado"
 
-# ===================== Extracción campos =====================
+###
 
 def get_ids(entry: Dict[str, Any]) -> Tuple[str, List[str], List[str]]:
     """
@@ -170,7 +155,7 @@ def get_sequence_info(entry: Dict[str, Any]) -> Tuple[str, int, Optional[int]]:
 def get_organism(entry: Dict[str, Any]) -> str:
     return (entry.get("organism") or {}).get("scientificName", "") or ""
 
-# ===================== pI teórico =====================
+### PI Teorico
 
 PK = {"Cterm": 2.34,"Nterm": 9.69,"C": 8.33,"D": 3.86,"E": 4.25,"H": 6.00,"K": 10.50,"R": 12.00,"Y": 10.07}
 
@@ -199,7 +184,7 @@ def calc_pI(seq: str) -> Optional[float]:
         else: hi=mid
     return round((lo+hi)/2,4)
 
-# ===================== Referencias =====================
+### Referencias
 
 def ref_title_and_link(entry: Dict[str, Any]) -> Tuple[str,str]:
     refs=entry.get("references",[]) or []
@@ -232,7 +217,7 @@ def build_references(entry: Dict[str, Any], max_n:int=3)->str:
         if s: out.append(s)
     return " | ".join(out)
 
-# ===================== Descarga ADN =====================
+### ADN
 
 def _fasta_to_seq(txt: str) -> str:
     lines = [ln.strip() for ln in txt.splitlines() if ln.strip()]
@@ -282,7 +267,7 @@ def fetch_best_dna(embl_ids: List[str], refseq_like_ids: List[str]) -> str:
             return seq
     return ""
 
-# ===================== Guardado =====================
+### nuevo excel
 
 def save_as_new_sheet(df: pd.DataFrame, filename:str):
     sheet="run_"+datetime.now().strftime("%Y%m%d_%H%M")
@@ -327,7 +312,7 @@ def find_abs_from_txt(accession: str) -> str:
     except Exception:
         return "No encontrado"
 
-    # Junta todas las líneas CC en un solo texto y normaliza espacios
+    # juntar las lineas
     cc_lines = []
     for ln in txt.splitlines():
         if ln.startswith("CC"):
@@ -335,11 +320,9 @@ def find_abs_from_txt(accession: str) -> str:
     cc_blob = " ".join(cc_lines)
     cc_blob = re.sub(r"\s+", " ", cc_blob)
 
-    # 1) Aísla SOLO el bloque de ABSORPTION (hasta el siguiente '-!- ' o el final)
     mblock = re.search(r"-!-\s*ABSORPTION\s*:\s*(.*?)(?=-!-\s*[A-Z]+:|$)", cc_blob, re.I)
     block = mblock.group(1) if mblock else ""
 
-    # 2) Dentro del bloque, captura la PRIMERA ocurrencia exacta de Abs(max) = ### nm
     m = re.search(r"Abs\s*\(\s*max\s*\)\s*=\s*(\d{2,4})\s*nm\b", block, re.I)
     if m:
         return f"{m.group(1)} nm"
@@ -366,7 +349,7 @@ def find_abs_all(entry: Dict[str, Any]) -> List[str]:
                 for v in vals:
                     if v not in found:
                         found.append(v)
-    # Otros comentarios
+    # otros comentarios
     for c in entry.get("comments", []) or []:
         for t in c.get("texts", []) or []:
             vals = _scan_text_for_abs_all(t.get("value", "") or "")
@@ -381,7 +364,7 @@ def find_abs_all(entry: Dict[str, Any]) -> List[str]:
                 found.append(v)
     return found
 
-# ===================== Main =====================
+### function main
 
 def main():
     print("🔬 chromoprotein_searcher 🔬")
@@ -424,11 +407,11 @@ def main():
         refs = build_references(entry)
         pI_val = calc_pI(aa_seq)
 
-        # ADN (mejor esfuerzo)
+        # best fetch DNA
         dna_seq = fetch_best_dna(embl_ids, refseq_ids)
         dna_len = len(dna_seq) if dna_seq else ""
 
-        # hipervínculo referencia principal
+        # referencia principal
         title,url = ref_title_and_link(entry)
         if title and url:
             safe_title = title.replace('"', "'")
@@ -460,3 +443,4 @@ def main():
 
 if __name__=="__main__":
     main()
+
